@@ -201,7 +201,16 @@ on_load() ->
       Dir ->
         filename:join(Dir, ?LIBNAME)
   end,
-  erlang:load_nif(SoName, []).
+  case erlang:load_nif(SoName, []) of
+    ok ->
+      ok;
+    {error, {load_failed, _}} ->
+      %% No NIF library here (e.g. a host where only the BEAM files were
+      %% built): keep the module loadable, calls raise `not_loaded'.
+      ok;
+    {error, _} = Error ->
+      Error
+  end.
 
 -doc """
 Init a repository.

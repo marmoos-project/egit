@@ -19,7 +19,8 @@ defmodule Egit.MixProject do
   def application do
     [
       description: ~c"Native git Erlang interface library",
-      extra_applications: []
+      mod: {Egit.Application, []},
+      extra_applications: [:logger]
     ]
   end
 end

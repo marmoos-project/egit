@@ -144,9 +144,9 @@ C `cflags` in the manifest are their union).
 - [X] `git:set_ssl_cert_locations(File, Path)` (either may be `nil`), wrapping
       `git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS, …)`, dirty IO NIF.
       Arity 2 rather than 1, to follow libgit2 (bundle file and/or directory).
-- [ ] The Elixir layer calls it once at startup on Android when
+- [X] The Elixir layer calls it once at startup on Android when
       `/apex/com.android.conscrypt/cacerts` exists (Android 14+: updatable CA
-      store). Moved to Phase 4.
+      store). Done in Phase 4 (`Egit.Application`).
 - [X] Device checks (Pixel 7, Android 17), with the app in the foreground:
   - clone `https://github.com/octocat/Hello-World.git` with the default store
     and again with the APEX store (120 certificates): both OK, ~1 s;
@@ -200,26 +200,48 @@ the foreground (or a foreground service). See Phase 4.
 
 ### Phase 4: Erlang / Elixir API
 
-- [ ] `src/git.erl`: `on_load` returns `ok` when no NIF library is found (as
-      the Mob scaffold's stub does), so the module still loads on a host
-      without a native build; calls then raise `nif_not_loaded`.
-- [ ] Elixir layer for Mob screens:
-  - network operations (`clone`, `fetch`, `pull`, `push`) run in a Task and
-    report back as messages to the caller, e.g. `{:git, :cloned, repo}` /
-    `{:git, :error, op, reason}`, like Mob's device APIs. They block for
-    seconds and must not run in a screen process;
-  - local operations stay synchronous;
-  - at startup on Android, call `git:set_ssl_cert_locations(nil, Dir)` with
-    `/apex/com.android.conscrypt/cacerts` when it exists;
-  - network operations fail with a DNS error while the app is in the
-    background (Phase 1 finding): detect it, report it as such, and retry when
-    the app comes back to the foreground;
-  - a long-lived process owns each repository handle. egit ties a handle to
-    the process that opened it and frees it when that process exits;
-  - repositories live in the app's documents directory, never under
-    `MOB_BEAMS_DIR`, which a deploy replaces;
-  - credentials pass through egit's existing options (see `CREDENTIALS.md`),
-    with tokens coming from the app's secure storage.
+- [X] `src/git.erl`: `on_load` returns `ok` when the library is missing
+      (`{error, {load_failed, _}}` only; other load errors still fail), so the
+      module loads on a host without a native build; calls then raise
+      `not_loaded`, which `Egit` reports as `{:error, :nif_not_loaded}`.
+- [X] Elixir layer (`lib/egit.ex`, `lib/egit/repo.ex`,
+      `lib/egit/application.ex`):
+  - **One process per repository** (`Egit.Repo`, under `Egit.RepoSupervisor`)
+    owns the handle and runs every operation, network ones included, instead
+    of a Task per network operation: egit frees a handle when the process that
+    opened it exits (its `resource_down` releases a reference it already gave
+    to the term), so a handle opened in a Task is unsafe anywhere else. It
+    also serialises access, as libgit2 requires for one `git_repository`;
+  - `Egit.clone/3`, `fetch/3`, `pull/3`, `push/4` return at once; the caller
+    receives `{:egit, repo, {op, :ok | :deferred | {:error, reason}}}`.
+    A failed clone stops its process;
+  - local operations are calls: `status/1`, `add/2`, `commit/2`, and
+    `run/4` for any `:git` function taking the repository first. They queue
+    behind a running network operation on the same repository (15 s default
+    timeout);
+  - errors are `{:error, reason}`: `:nif_not_loaded`, `:not_ready` (clone in
+    progress), `{:network, msg}`, `{:certificate, msg}`, `{:git, msg}`;
+  - `Egit.Application` (started by Mob at boot, as for every activated
+    plugin) calls `git:set_ssl_cert_locations(nil, Dir)` when
+    `/apex/com.android.conscrypt/cacerts` exists;
+  - a `{:network, _}` failure while `Mob.Device.foreground?()` is false is
+    deferred: `{op, :deferred}` to the caller, then a retry 1 s after
+    `{:mob_device, :did_become_active}` (`Mob.Device.subscribe(:app)`). Mob is
+    called through `apply/3`, so egit has no Mob dependency and runs on a
+    host;
+  - `Egit.path(name)` is `<Mob.Storage.dir(:documents)>/git/<name>`;
+  - credentials go through `opts` unchanged (egit's `%{credentials: …}`).
+    Not exercised yet: no private remote tested.
+- [X] Host tests (`test/egit_test.exs`, 9 tests): init / add / commit / status
+      / rev_list / close, open errors, clone and fetch from a local bare repo
+      through the mailbox, failed clone, error classification. They need the
+      host NIF, built with `make -C c_src HAVE_FORMAT=1 HAVE_SRCLOC=1` against
+      a system libgit2 (1.9.1 here), and are skipped without it.
+- [X] Device checks (Pixel 7): `:egit` is started at boot; `Egit.path/1` is
+      `/data/user/0/<app>/files/documents/git/…`; local operations; HTTPS
+      clone through `Egit.clone/3`. With the network blocked
+      (`effective=APP_BACKGROUND`), a clone got `{:clone, :deferred}` after
+      0.1 s and `{:clone, :ok}` after the phone was woken (15.6 s).
 - [ ] Demo screen declared in the manifest's `:screens` (like
       `MobCamera.DemoScreen`): clone over HTTPS, show the log.
 
@@ -235,7 +257,7 @@ the foreground (or a foreground service). See Phase 4.
       carry submodules; publishing to Hex would mean shipping the vendored
       sources in the package (size, license notices for libgit2 GPLv2 with
       linking exception and mbedTLS Apache-2.0).
-- [ ] Offer upstream: the tolerant `on_load` and `set_ssl_cert_locations/1`.
+- [ ] Offer upstream: the tolerant `on_load` and `set_ssl_cert_locations/2`.
 
 ## Risks
 
