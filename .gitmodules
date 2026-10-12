@@ -5,3 +5,6 @@
 [submodule "vendor/libgit2"]
 	path = vendor/libgit2
 	url = git@github.com:libgit2/libgit2.git
+[submodule "vendor/mbedtls"]
+	path = vendor/mbedtls
+	url = git@github.com:Mbed-TLS/mbedtls.git
