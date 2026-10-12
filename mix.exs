@@ -9,7 +9,7 @@ defmodule Egit.MixProject do
     [
       app: :egit,
       version: "0.3.0",
-      elixir: "~> 1.17",
+      elixir: "~> 1.18",
       language: :erlang,
       deps: []
     ]

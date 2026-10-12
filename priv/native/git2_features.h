@@ -9,7 +9,8 @@
  *   -DUSE_BUNDLED_ZLIB=OFF -DUSE_HTTP_PARSER=builtin
  *
  * Only change: GIT_ARCH_64 / GIT_ARCH_32 follow the pointer size, so one header
- * serves every Android ABI. See PLAN.md for how to regenerate it.
+ * serves every Android ABI. `mix egit.gen_sources` reports the defines that
+ * drift from libgit2's CMake output after a libgit2 bump.
  */
 #ifndef INCLUDE_features_h__
 #define INCLUDE_features_h__

@@ -102,8 +102,9 @@ Prove that the toolchain path works before building anything reusable.
 Exit: a commit and `:git.status/1` on a local repo in the app's documents
 directory. **Done.**
 
-CMake configure used for `git2_features.h` and `sources.exs` (NDK 27, from the
-repo root; the output directory is scratch):
+CMake configure used for `git2_features.h` and `sources.exs` in Phase 0 (NDK
+27, from the repo root; the output directory is scratch). Phase 3 replaces it
+with `mix egit.gen_sources`:
 
 ```sh
 NDK=~/Android/Sdk/ndk/27.2.12479018
@@ -177,15 +178,25 @@ the foreground (or a foreground service). See Phase 4.
 
 ### Phase 3: maintainable build
 
-- [ ] `mix egit.gen_sources`: walks `vendor/libgit2` and `vendor/mbedtls` with
-      explicit include / exclude rules (no `win32/`, no unused hash backends,
-      no `ntlmclient`, no PCRE) and writes `priv/native/sources.exs`. The
-      manifest reads it, because `cpp_archive` takes no globs.
-- [ ] Derive `git2_features.h` from a CMake configure of libgit2 with the
-      options above (once per platform, as elixir-runtimes' `libgit2.mk`
-      does), then merge by hand under `#ifdef`s. Document the CMake command
-      in this file so a libgit2 bump can redo it.
-- [ ] Commit the generated files; regenerate only when a submodule moves.
+- [X] `mix egit.gen_sources` (`lib/mix/tasks/egit.gen_sources.ex`). Rather
+      than hand-written include / exclude rules over `vendor/libgit2`, it runs
+      libgit2's own CMake configure for Android arm64 with the plugin's options
+      (`@cmake_options` in the task, the single place they are kept), and:
+  - writes `priv/native/sources.exs` from `compile_commands.json`;
+  - compares CMake's `git2_features.h` with `priv/native/git2_features.h`
+    (which stays hand-merged, for every ABI and later iOS) and lists the
+    defines to merge;
+  - lists libgit2 `-D` flags missing from the manifest's `:cflags`;
+  - `--check` writes nothing and fails when `sources.exs` is stale;
+    `--ndk PATH` picks the NDK (default: the newest one found), `--keep`
+    keeps the CMake build directory.
+
+  mbedTLS needs no list: the manifest globs `vendor/mbedtls/library/*.c`.
+  Needs `cmake` and `ninja`. Tested: no-op on the current tree; a removed
+  source is reported and restored; a wrong TLS define is reported.
+- [X] The CMake command of Phase 0 is superseded by the task.
+- [ ] Commit the generated files; after moving `vendor/libgit2`, run
+      `mix egit.gen_sources`, merge what it reports, and rebuild on a device.
 
 ### Phase 4: Erlang / Elixir API
 
