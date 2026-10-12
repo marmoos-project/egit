@@ -269,6 +269,37 @@ static ERL_NIF_TERM open_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
   return to_monitored_resource(env, p);
 }
 
+// Set the CA certificates used to verify HTTPS remotes: a bundle file, a
+// directory of certificates, or both; `nil` for the one not given. Process-wide
+// (git_libgit2_opts), replacing the compiled-in default.
+static ERL_NIF_TERM set_ssl_cert_locations_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+  assert(argc == 2);
+
+  std::string loc[2];
+  bool        set[2]{};
+
+  for (int i = 0; i < 2; ++i) {
+    ErlNifBinary bin;
+    if (enif_is_identical(argv[i], ATOM_NIL))
+      continue;
+    if (!enif_inspect_binary(env, argv[i], &bin)) [[unlikely]]
+      return enif_make_badarg(env);
+    loc[i] = bin_to_str(bin);
+    set[i] = true;
+  }
+
+  if (!set[0] && !set[1]) [[unlikely]]
+    return enif_make_badarg(env);
+
+  if (git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS,
+                       set[0] ? loc[0].c_str() : nullptr,
+                       set[1] ? loc[1].c_str() : nullptr) < 0) [[unlikely]]
+    return raise_git_exception(env, "Failed to set SSL certificate locations");
+
+  return ATOM_OK;
+}
+
 static ERL_NIF_TERM fetch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   GitRepoPtr* repo;
@@ -1068,6 +1099,9 @@ static ErlNifFunc git_funcs[] =
   {"stash_apply_nif",   2, stash_apply_nif,   ERL_NIF_DIRTY_JOB_IO_BOUND},
   {"stash_pop_nif",     2, stash_pop_nif,     ERL_NIF_DIRTY_JOB_IO_BOUND},
   {"stash_drop_nif",    2, stash_drop_nif,    ERL_NIF_DIRTY_JOB_IO_BOUND},
+
+  // TLS settings - parses the certificates found at the given locations
+  {"set_ssl_cert_locations_nif", 2, set_ssl_cert_locations_nif, ERL_NIF_DIRTY_JOB_IO_BOUND},
 };
 
 static void unload(ErlNifEnv* env, void* priv_data) {

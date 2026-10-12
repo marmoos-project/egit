@@ -45,6 +45,7 @@ git:reflog(Repo, "main")
 -export([add_all/1, add/2, add/3, commit/2,
          rev_parse/2, rev_parse/3, rev_list/3]).
 -export([config_get/2, config_set/3]).
+-export([set_ssl_cert_locations/2]).
 -export([branch_create/2, branch_create/3]).
 -export([branch_rename/3, branch_rename/4,  branch_delete/2]).
 -export([list_branches/1, list_branches/2,  list_index/1, list_index/2]).
@@ -569,6 +570,23 @@ config_set(Src, Key, Val) ->
   config_set_nif(Src, to_bin(Key), to_bin(Val)).
 
 -doc """
+Set the CA certificates used to verify HTTPS remotes, for the whole runtime.
+
+`File` is a bundle of PEM certificates and `Path` a directory holding one
+certificate per file; pass `nil` for the one not used. Replaces the location
+libgit2 was built with.
+
+On Android 14+ the up-to-date system store is the APEX one:
+```
+1> git:set_ssl_cert_locations(nil, "/apex/com.android.conscrypt/cacerts").
+ok
+```
+""".
+-spec set_ssl_cert_locations(binary()|string()|nil, binary()|string()|nil) -> ok.
+set_ssl_cert_locations(File, Path) ->
+  set_ssl_cert_locations_nif(nil_or_bin(File), nil_or_bin(Path)).
+
+-doc """
 Create a branch
 See: `git:branch_create/3`.
 """.
@@ -947,6 +965,9 @@ stash_drop(Repo, Index) when is_reference(Repo), is_integer(Index) ->
 to_bin(B) when is_binary(B) -> B;
 to_bin(B) when is_list(B)   -> list_to_binary(B).
 
+nil_or_bin(nil) -> nil;
+nil_or_bin(B)   -> to_bin(B).
+
 init_nif(Path, Opts) when is_binary(Path), is_list(Opts) ->
   ?NOT_LOADED_ERROR.
 
@@ -957,6 +978,9 @@ clone_nif(URL, Path, Opts) when is_binary(URL), is_binary(Path), is_map(Opts) ->
   ?NOT_LOADED_ERROR.
 
 open_nif(Path) when is_binary(Path) ->
+  ?NOT_LOADED_ERROR.
+
+set_ssl_cert_locations_nif(_File, _Path) ->
   ?NOT_LOADED_ERROR.
 
 fetch_nif(Repo, _Op) when is_reference(Repo) ->

@@ -3,7 +3,7 @@
  * standing in for the header libgit2's CMake generates. Taken from a CMake
  * configure of libgit2 v1.9.7 for Android arm64, API 28, with:
  *
- *   -DUSE_THREADS=ON -DUSE_SSH=OFF -DUSE_HTTPS=OFF -DUSE_NTLMCLIENT=OFF
+ *   -DUSE_THREADS=ON -DUSE_SSH=OFF -DUSE_HTTPS=mbedTLS -DUSE_NTLMCLIENT=OFF
  *   -DUSE_GSSAPI=OFF -DUSE_AUTH_NEGOTIATE=OFF -DUSE_AUTH_NTLM=OFF
  *   -DREGEX_BACKEND=regcomp -DUSE_SHA1=CollisionDetection -DUSE_SHA256=Builtin
  *   -DUSE_BUNDLED_ZLIB=OFF -DUSE_HTTP_PARSER=builtin
@@ -32,7 +32,9 @@
 
 #define GIT_REGEX_REGCOMP
 
-/* No HTTPS yet (PLAN.md, Phase 1), no SSH, no NTLM / GSSAPI. */
+/* HTTPS through mbedTLS (vendor/mbedtls); no SSH, no NTLM / GSSAPI. */
+#define GIT_HTTPS 1
+#define GIT_MBEDTLS 1
 
 #define GIT_HTTPPARSER_BUILTIN 1
 
