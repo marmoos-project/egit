@@ -99,7 +99,12 @@ defmodule Mix.Tasks.Egit.GenSources do
       commands = build |> Path.join("compile_commands.json") |> File.read!() |> JSON.decode!()
 
       sources_ok? = write_sources(commands, root, opts[:check])
-      check_features(Path.join(build, "gen_headers/git2_features.h"), Path.join(root, @features_file))
+
+      check_features(
+        Path.join(build, "gen_headers/git2_features.h"),
+        Path.join(root, @features_file)
+      )
+
       check_defines(commands, Path.join(root, @manifest_file))
 
       if opts[:check] && !sources_ok?,
@@ -162,7 +167,11 @@ defmodule Mix.Tasks.Egit.GenSources do
     if explicit do
       explicit
     else
-      [System.get_env("ANDROID_HOME"), System.get_env("ANDROID_SDK_ROOT"), Path.expand("~/Android/Sdk")]
+      [
+        System.get_env("ANDROID_HOME"),
+        System.get_env("ANDROID_SDK_ROOT"),
+        Path.expand("~/Android/Sdk")
+      ]
       |> Enum.reject(&is_nil/1)
       |> Enum.flat_map(&Path.wildcard(Path.join(&1, "ndk/*")))
       |> Enum.filter(&File.dir?/1)
@@ -290,7 +299,9 @@ defmodule Mix.Tasks.Egit.GenSources do
   end
 
   defp command_defines(%{"arguments" => args}), do: Enum.flat_map(args, &define_name/1)
-  defp command_defines(%{"command" => cmd}), do: cmd |> OptionParser.split() |> Enum.flat_map(&define_name/1)
+
+  defp command_defines(%{"command" => cmd}),
+    do: cmd |> OptionParser.split() |> Enum.flat_map(&define_name/1)
 
   defp define_name("-D" <> define), do: [define |> String.split("=", parts: 2) |> hd()]
   defp define_name(_), do: []

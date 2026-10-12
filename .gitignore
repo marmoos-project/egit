@@ -5,3 +5,4 @@
 /priv/*.so
 /_build
 /doc
+/tmp
