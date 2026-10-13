@@ -3,7 +3,7 @@
 # the app; the driver table registers it as the static NIF `git`.
 #
 # Android only so far; HTTPS through mbedTLS (vendor/mbedtls).
-libgit2_sources = Code.eval_file(Path.join(__DIR__, "native/sources.exs")) |> elem(0)
+libgit2_sources = Code.eval_file(Path.join(__DIR__, "../c_src/libgit2_sources.exs")) |> elem(0)
 
 # mbedTLS ships its generated sources in release tags, so the library is
 # compiled as is. Its private headers sit next to the sources and are found
@@ -28,9 +28,12 @@ mbedtls_sources =
       platform: :android,
       nm_symbol: "git_nif_init",
       sources: ["c_src/git.cpp" | libgit2_sources ++ mbedtls_sources],
-      # priv/native first: it holds git2_features.h, which CMake would generate.
+      # c_src first: it holds git2_features.h (which CMake would generate) and
+      # the mbedTLS config. They sit beside git.cpp because the plugin
+      # signature covers the directory of every compiled source, not include
+      # roots (MobDev.Plugin.Sign.build_inputs/2).
       includes: [
-        "priv/native",
+        "c_src",
         "vendor/libgit2/include",
         "vendor/libgit2/src/libgit2",
         "vendor/libgit2/src/util",

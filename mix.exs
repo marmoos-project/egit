@@ -11,7 +11,15 @@ defmodule Egit.MixProject do
       version: "0.3.0",
       elixir: "~> 1.18",
       language: :erlang,
-      deps: []
+      deps: deps()
+    ]
+  end
+
+  defp deps do
+    [
+      # mix mob.validate_plugin / mob.plugin.keygen / mob.plugin.sign.
+      # Dev-only: never part of a host app's dependency tree.
+      {:mob_dev, "~> 0.7.16", only: :dev, runtime: false}
     ]
   end
 

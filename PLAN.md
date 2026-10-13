@@ -61,9 +61,10 @@ egit/
   lib/egit/                    new   Elixir API for Mob screens (MobGit-style async)
   lib/mix/tasks/egit.gen_sources.ex   new   regenerates the source list
   priv/mob_plugin.exs          new   cpp_archive manifest
-  priv/native/git2_features.h  new   libgit2 build config, per-platform #ifdefs
-  priv/native/egit_mbedtls_config.h   new   mbedTLS config (MBEDTLS_CONFIG_FILE)
-  priv/native/sources.exs      generated   source list read by the manifest
+  c_src/git2_features.h        new   libgit2 build config, per-platform #ifdefs
+  c_src/egit_mbedtls_config.h  new   mbedTLS config (MBEDTLS_CONFIG_FILE)
+  c_src/experimental.h         new   libgit2 experimental features (none)
+  c_src/libgit2_sources.exs    generated   source list read by the manifest
   vendor/libgit2               submodule v1.9.7
   vendor/mbedtls               submodule mbedtls-3.6.x
 ```
@@ -78,7 +79,7 @@ Prove that the toolchain path works before building anything reusable.
 - [X] Minimal `mix.exs` and `priv/mob_plugin.exs` with one `cpp_archive` entry:
       `git.cpp` plus the libgit2 sources (`src/libgit2`, `src/util`,
       `deps/xdiff`, `deps/llhttp`, builtin and sha1dc hash backends, `unix/`
-      only), HTTPS off. The list is in `priv/native/sources.exs`, taken from
+      only), HTTPS off. The list is in `c_src/libgit2_sources.exs`, taken from
       the `compile_commands.json` of the CMake configure below.
 - [X] A first `git2_features.h` for Android: threads, regcomp, builtin SHA, no
       HTTPS, no SSH, no NTLM. Copied from the CMake configure below, with
@@ -182,12 +183,12 @@ the foreground (or a foreground service). See Phase 4.
       than hand-written include / exclude rules over `vendor/libgit2`, it runs
       libgit2's own CMake configure for Android arm64 with the plugin's options
       (`@cmake_options` in the task, the single place they are kept), and:
-  - writes `priv/native/sources.exs` from `compile_commands.json`;
-  - compares CMake's `git2_features.h` with `priv/native/git2_features.h`
+  - writes `c_src/libgit2_sources.exs` from `compile_commands.json`;
+  - compares CMake's `git2_features.h` with `c_src/git2_features.h`
     (which stays hand-merged, for every ABI and later iOS) and lists the
     defines to merge;
   - lists libgit2 `-D` flags missing from the manifest's `:cflags`;
-  - `--check` writes nothing and fails when `sources.exs` is stale;
+  - `--check` writes nothing and fails when `libgit2_sources.exs` is stale;
     `--ndk PATH` picks the NDK (default: the newest one found), `--keep`
     keeps the CMake build directory.
 

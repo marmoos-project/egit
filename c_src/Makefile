@@ -60,8 +60,12 @@ endif
 SRC_DIR     = $(CURDIR)
 SO_OUTPUT  ?= $(BASEDIR)/priv/$(PROJECT).so
 
+# Objects stay out of c_src: the Mob plugin signature hashes every file there
+# (priv/mob_plugin.sig), so a host build must not add or change any.
+OBJ_DIR    ?= $(BASEDIR)/_build/c_src
+
 SOURCES    := $(wildcard $(SRC_DIR)/*.cpp)
-OBJECTS     = $(addsuffix .o, $(basename $(SOURCES)))
+OBJECTS     = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SOURCES))
 
 COMPILE_CPP = $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(NIF_PRINT) -c
 
@@ -70,7 +74,7 @@ COMPILE_CPP = $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(NIF_PRINT) -c
 all: $(SO_OUTPUT)
 
 clean:
-	rm -f $(SO_OUTPUT) *.o
+	rm -f $(SO_OUTPUT) $(OBJECTS)
 
 info:
 	@echo CXX=$(CXX)
@@ -82,7 +86,8 @@ $(SO_OUTPUT): $(OBJECTS)
 	@mkdir -p $(BASEDIR)/priv/
 	$(CXX) $(OBJECTS) $(LDFLAGS) -o $(SO_OUTPUT)
 
-%.o: %.cpp $(wildcard *.hpp)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(wildcard $(SRC_DIR)/*.hpp)
+	@mkdir -p $(@D)
 	@if [ -z $(findstring $(HAVE_FORMAT),1) ] && [ -z "$(HAVE_FMTLIB)"]; then \
 	  echo "==> Updating fmt submodule"; \
 		[ -z "$(shell git config --global safe.directory)" ] && git config --global --add safe.directory '*' || true; \

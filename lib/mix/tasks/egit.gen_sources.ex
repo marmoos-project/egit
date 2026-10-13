@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Egit.GenSources do
   @shortdoc "Regenerates the libgit2 source list for the Mob plugin build"
 
   @moduledoc """
-  Regenerates `priv/native/sources.exs`, the libgit2 C sources that
+  Regenerates `c_src/libgit2_sources.exs`, the libgit2 C sources that
   `priv/mob_plugin.exs` hands to mob_dev's `cpp_archive` builder, and checks the
   hand-maintained build settings against libgit2's own build.
 
@@ -14,7 +14,7 @@ defmodule Mix.Tasks.Egit.GenSources do
     * writes the sources from the generated `compile_commands.json`, relative
       to the repo root;
     * compares the generated `git2_features.h` with
-      `priv/native/git2_features.h`, which stays hand-merged (it covers every
+      `c_src/git2_features.h`, which stays hand-merged (it covers every
       ABI and, later, iOS), and reports the defines that differ;
     * reports the `-D` flags libgit2 compiles with that the manifest's
       `:cflags` lack.
@@ -27,7 +27,7 @@ defmodule Mix.Tasks.Egit.GenSources do
     * `--ndk PATH` - Android NDK root. Defaults to `$ANDROID_NDK_HOME`,
       `$ANDROID_NDK_ROOT`, then the newest NDK under `$ANDROID_HOME/ndk`,
       `$ANDROID_SDK_ROOT/ndk` or `~/Android/Sdk/ndk`.
-    * `--check` - write nothing; fail if `sources.exs` is out of date.
+    * `--check` - write nothing; fail if `libgit2_sources.exs` is out of date.
     * `--keep` - keep the CMake build directory and print its path.
 
   Needs `cmake` and `ninja` on the `PATH`.
@@ -60,8 +60,8 @@ defmodule Mix.Tasks.Egit.GenSources do
   # Mob's minimum Android API (MobDev.Plugin.CppArchive builds for it too).
   @android_api 28
 
-  @sources_file "priv/native/sources.exs"
-  @features_file "priv/native/git2_features.h"
+  @sources_file "c_src/libgit2_sources.exs"
+  @features_file "c_src/git2_features.h"
   @manifest_file "priv/mob_plugin.exs"
 
   # Defines git2_features.h is expected to differ on: the hand-merged header
@@ -187,7 +187,7 @@ defmodule Mix.Tasks.Egit.GenSources do
     end
   end
 
-  # ── sources.exs ─────────────────────────────────────────────────────────────
+  # ── libgit2_sources.exs ─────────────────────────────────────────────────────
 
   # Returns whether the file on disk already matched.
   defp write_sources(commands, root, check?) do
