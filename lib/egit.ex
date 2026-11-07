@@ -44,15 +44,14 @@ defmodule Egit do
   @type repo :: pid()
   @type network_op :: :clone | :fetch | :pull | :push
 
-  @typedoc """
-  Why an operation failed:
+  @type status_opt() ::
+          {:untracked, :none | :normal | :recursive}
+          | {:paths, [binary()]}
+          | :branch
+          | :ignored
+          | :submodules
+          | :ignore_submodules
 
-    * `:nif_not_loaded` - no native library (a host without a NIF build);
-    * `:not_ready` - the repository is still being cloned;
-    * `{:network, message}` - host unreachable with the app in the foreground;
-    * `{:certificate, message}` - TLS certificate refused;
-    * `{:git, message}` - any other libgit2 / egit error.
-  """
   @type reason ::
           :nif_not_loaded
           | :not_ready
@@ -149,6 +148,12 @@ defmodule Egit do
     run(repo, :status)
   end
 
+  @doc "`:git.status/2`."
+  @spec status(repo(), [status_opt()]) :: {:ok, map()} | {:error, reason()}
+  def status(repo, opts) do
+    run(repo, :status, [opts])
+  end
+
   @doc "`:git.add/2`: stages a path, a list of paths, or `\".\"`."
   @spec add(repo(), String.t() | [String.t()]) :: {:ok, map()} | {:error, reason()}
   def add(repo, paths) do
@@ -193,15 +198,16 @@ defmodule Egit do
   def attempt(fun) do
     {:ok, fun.()}
   rescue
-    e in ErlangError ->
-      case e.original do
-        {:not_loaded, _} -> {:error, :nif_not_loaded}
-        message when is_binary(message) -> {:error, classify(message)}
-        other -> {:error, {:git, other}}
-      end
-
+    # Not `e in ErlangError`: that also rescues raw errors Elixir normalises
+    # to another exception (`:badarg` becomes an ArgumentError), which has no
+    # `:original`.
     e ->
-      {:error, {:git, Exception.message(e)}}
+      case e do
+        %ErlangError{original: {:not_loaded, _}} -> {:error, :nif_not_loaded}
+        %ErlangError{original: message} when is_binary(message) -> {:error, classify(message)}
+        %ErlangError{original: other} -> {:error, {:git, other}}
+        _ -> {:error, {:git, Exception.message(e)}}
+      end
   end
 
   # libgit2's messages for a host it could not resolve or reach.
