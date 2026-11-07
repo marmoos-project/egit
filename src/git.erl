@@ -55,7 +55,7 @@ git:reflog(Repo, "main")
 -export([list_tags/1, list_tags/2]).
 -export([status/1, status/2, reset/2]).
 -export([blame/2, blame/3, describe/2, describe/3]).
--export([cherry_pick/2, reflog/2, remove/2, move/3]).
+-export([cherry_pick/2, reflog/2, remove/2, move/3, index_add_gitlink/3]).
 -export([diff/3, diff/4, merge/2, revert/2]).
 -export([rebase_init/2, rebase_next/1, rebase_finish/1, rebase_abort/1]).
 -export([stash_save/2, stash_list/1, stash_apply/2, stash_pop/2, stash_drop/2]).
@@ -858,6 +858,24 @@ remove(Repo, Path) when is_reference(Repo) ->
   remove_nif(Repo, to_bin(Path)).
 
 -doc """
+Stage a gitlink: a submodule entry (mode 160000) at `Path`, pointing at the
+commit `CommitOID` (a full hex id) of another repository, and write the index.
+
+The working tree is neither read nor written, and the commit need not exist in
+this repository: the submodule is recorded without being checked out. Its
+`.gitmodules` section is the caller's to write and stage. An entry already at
+`Path` is replaced; `remove/2` drops it.
+
+Keep an empty directory at `Path` in the working tree, as git does for a
+submodule that is not checked out: without it, `status/1` reports the path as
+deleted and `add_all/1` stages its removal.
+""".
+-spec index_add_gitlink(repository(), string()|binary(), string()|binary()) ->
+        ok | {error, term()}.
+index_add_gitlink(Repo, Path, CommitOID) when is_reference(Repo) ->
+  index_add_gitlink_nif(Repo, to_bin(Path), to_bin(CommitOID)).
+
+-doc """
 Move/rename a file in the index and write the index.
 """.
 -spec move(repository(), string()|binary(), string()|binary()) -> ok | {error, term()}.
@@ -1068,6 +1086,10 @@ reflog_nif(Repo, RefName) when is_reference(Repo), is_binary(RefName) ->
   ?NOT_LOADED_ERROR.
 
 remove_nif(Repo, Path) when is_reference(Repo), is_binary(Path) ->
+  ?NOT_LOADED_ERROR.
+
+index_add_gitlink_nif(Repo, Path, CommitOID)
+    when is_reference(Repo), is_binary(Path), is_binary(CommitOID) ->
   ?NOT_LOADED_ERROR.
 
 move_nif(Repo, OldPath, NewPath) when is_reference(Repo), is_binary(OldPath), is_binary(NewPath) ->

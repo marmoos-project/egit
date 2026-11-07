@@ -43,6 +43,79 @@ defmodule EgitTest do
     end
   end
 
+  describe "gitlinks" do
+    @describetag :nif
+
+    # A submodule recorded without being checked out: the target is a sibling
+    # repository, and the gitlink's path is an empty directory.
+    setup %{tmp_dir: dir} do
+      {:ok, target} = Egit.init(Path.join(dir, "ship"))
+      configure(target)
+      sha = commit_file(target, "meta.md", "ship\n")
+
+      {:ok, repo} = Egit.init(Path.join(dir, "voyage"))
+      configure(repo)
+      commit_file(repo, ".gitmodules", ~s([submodule "ship"]\n\tpath = ship\n\turl = ../ship\n))
+      File.mkdir_p!(Path.join(dir, "voyage/ship"))
+
+      %{repo: repo, target: target, sha: sha}
+    end
+
+    defp tree(repo) do
+      {:ok, %{type: :tree, commits: entries}} = Egit.run(repo, :cat_file, ["HEAD:"])
+      entries
+    end
+
+    test "a gitlink to a commit of another repository round-trips", %{repo: repo, sha: sha} do
+      assert {:ok, :ok} = Egit.run(repo, :index_add_gitlink, ["ship", sha])
+      assert {:ok, {:ok, _}} = Egit.commit(repo, "link ship")
+
+      assert {"ship", "commit", ^sha, 0o160000} = List.keyfind(tree(repo), "ship", 0)
+      assert {:ok, %{}} == Egit.status(repo)
+    end
+
+    test "a gitlink is replaced, and removed with remove/2", %{
+      repo: repo,
+      target: target,
+      sha: sha
+    } do
+      {:ok, :ok} = Egit.run(repo, :index_add_gitlink, ["ship", sha])
+      {:ok, {:ok, _}} = Egit.commit(repo, "link ship")
+
+      sha2 = commit_file(target, "meta.md", "ship 2\n")
+      assert {:ok, :ok} = Egit.run(repo, :index_add_gitlink, ["ship", sha2])
+      {:ok, {:ok, _}} = Egit.commit(repo, "move ship")
+      assert {"ship", "commit", ^sha2, 0o160000} = List.keyfind(tree(repo), "ship", 0)
+
+      assert {:ok, :ok} = Egit.run(repo, :remove, ["ship"])
+      {:ok, {:ok, _}} = Egit.commit(repo, "unlink ship")
+      refute List.keyfind(tree(repo), "ship", 0)
+    end
+
+    test "without its empty directory, a gitlink shows as deleted", %{
+      tmp_dir: dir,
+      repo: repo,
+      sha: sha
+    } do
+      {:ok, :ok} = Egit.run(repo, :index_add_gitlink, ["ship", sha])
+      {:ok, {:ok, _}} = Egit.commit(repo, "link ship")
+
+      File.rmdir!(Path.join(dir, "voyage/ship"))
+      assert {:ok, %{worktree: [deleted: "ship"]}} = Egit.status(repo)
+    end
+
+    test "an invalid commit id is an error", %{repo: repo, sha: sha} do
+      assert {:ok, {:error, "Invalid commit id abc"}} =
+               Egit.run(repo, :index_add_gitlink, ["ship", "abc"])
+
+      assert {:ok, {:error, message}} =
+               Egit.run(repo, :index_add_gitlink, ["ship", String.duplicate("z", 40)])
+
+      assert message =~ "Invalid commit id"
+      assert {:ok, {:error, _}} = Egit.run(repo, :index_add_gitlink, ["ship", sha <> "0"])
+    end
+  end
+
   describe "network operations" do
     @describetag :nif
 

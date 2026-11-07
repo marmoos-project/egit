@@ -110,3 +110,42 @@ ERL_NIF_TERM lg2_index(ErlNifEnv* env, git_repository* repo, ERL_NIF_TERM opts)
 
   return enif_make_list_from_array(env, &res.front(), res.size());
 }
+// Stage a gitlink: a submodule entry (mode 160000) at `path`, pointing at the
+// commit `sha` of another repository. Nothing is read from or written to the
+// working tree, and the commit need not exist in this repository's object
+// database: the submodule is recorded without being checked out. An entry
+// already at `path` is replaced.
+ERL_NIF_TERM lg2_index_add_gitlink(ErlNifEnv* env, git_repository* repo,
+                                   std::string const& path, std::string const& sha)
+{
+  assert(repo);
+
+  // git_oid_fromstr reads a full hex id whatever the string's length.
+  if (sha.size() != GIT_OID_SHA1_HEXSIZE) [[unlikely]]
+    return make_error(env, "Invalid commit id " + sha);
+
+  git_oid oid;
+#ifdef GIT_EXPERIMENTAL_SHA256
+  if (git_oid_fromstr(&oid, sha.c_str(), GIT_OID_SHA1) != GIT_OK) [[unlikely]]
+#else
+  if (git_oid_fromstr(&oid, sha.c_str()) != GIT_OK) [[unlikely]]
+#endif
+    return make_git_error(env, "Invalid commit id " + sha);
+
+  SmartPtr<git_index> index(git_index_free);
+  if (git_repository_index(&index, repo) != GIT_OK) [[unlikely]]
+    return make_git_error(env, "Failed to get repository index");
+
+  git_index_entry entry{};
+  entry.mode = GIT_FILEMODE_COMMIT;
+  entry.id   = oid;
+  entry.path = path.c_str();
+
+  if (git_index_add(index, &entry) != GIT_OK) [[unlikely]]
+    return make_git_error(env, "Failed to add gitlink " + path + " to index");
+
+  if (git_index_write(index) != GIT_OK) [[unlikely]]
+    return make_git_error(env, "Failed to write index");
+
+  return ATOM_OK;
+}

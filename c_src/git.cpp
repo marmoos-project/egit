@@ -761,6 +761,23 @@ static ERL_NIF_TERM remove_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv
   return lg2_remove(env, repo->get(), path);
 }
 
+static ERL_NIF_TERM index_add_gitlink_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+  assert(argc == 3);
+
+  GitRepoPtr* repo;
+  if (!enif_get_resource(env, argv[0], GIT_REPO_RESOURCE, (void**)&repo)) [[unlikely]]
+    return enif_make_badarg(env);
+
+  ErlNifBinary path, sha;
+  if (!enif_inspect_binary(env, argv[1], &path) || path.size == 0) [[unlikely]]
+    return enif_make_badarg(env);
+  if (!enif_inspect_binary(env, argv[2], &sha)) [[unlikely]]
+    return enif_make_badarg(env);
+
+  return lg2_index_add_gitlink(env, repo->get(), bin_to_str(path), bin_to_str(sha));
+}
+
 static ERL_NIF_TERM move_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   assert(argc == 3);
@@ -1008,6 +1025,7 @@ static ErlNifFunc git_funcs[] =
 
   // Index operations - filesystem I/O
   {"add_nif",           3, add_nif,           ERL_NIF_DIRTY_JOB_IO_BOUND},
+  {"index_add_gitlink_nif", 3, index_add_gitlink_nif, ERL_NIF_DIRTY_JOB_IO_BOUND},
 
   // Checkout operations - filesystem I/O to update working tree
   {"checkout_nif",      3, checkout_nif,      ERL_NIF_DIRTY_JOB_IO_BOUND},
