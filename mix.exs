@@ -2,15 +2,19 @@ defmodule Egit.MixProject do
   use Mix.Project
 
   # Mix build of egit for use as a Mob plugin (see PLAN.md). rebar.config and
-  # the Makefiles stay the upstream host build; this file only compiles
-  # src/git.erl. The NIF itself is cross-compiled by mob_dev from
-  # priv/mob_plugin.exs, so no native step runs here.
+  # the Makefiles stay the upstream host build. The device NIF is
+  # cross-compiled by mob_dev from priv/mob_plugin.exs.
+  #
+  # A host NIF is built from c_src/Makefile, against the system libgit2, by
+  # `mix compile.egit_nif` (lib/mix/tasks/compile.egit_nif.ex): in the test
+  # build only, see there.
   def project do
     [
       app: :egit,
       version: "0.3.0",
       elixir: "~> 1.18",
       language: :erlang,
+      compilers: Mix.compilers() ++ [:egit_nif],
       deps: deps()
     ]
   end

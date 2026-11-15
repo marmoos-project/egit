@@ -1,5 +1,5 @@
-# The Egit tests need the host NIF (priv/git.so): `make -C c_src HAVE_FORMAT=1
-# HAVE_SRCLOC=1`, against a system libgit2. Without it they are skipped.
+# The Egit tests need the host NIF, which `mix test` builds against the system
+# libgit2 (see mix.exs). Without it they are skipped.
 nif? =
   try do
     :git.open(System.tmp_dir!())

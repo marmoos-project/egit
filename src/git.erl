@@ -187,20 +187,25 @@ Status function options
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% priv/git, then native/git: the host NIF Mix builds per env (see mix.exs).
+%% The first one that exists is loaded; with none, a static NIF (Mob) or
+%% nothing (a host without a native build).
 on_load() ->
-  SoName  =
-    case code:priv_dir(?LIBNAME) of
-      {error, bad_name} ->
-        case code:which(?MODULE) of
-          Filename when is_list(Filename) ->
-            Dir = filename:dirname(filename:dirname(Filename)),
-            filename:join([Dir, "priv", ?LIBNAME]);
-          _ ->
-            filename:join("../priv", ?LIBNAME)
-        end;
-      Dir ->
-        filename:join(Dir, ?LIBNAME)
-  end,
+  Base = filename:basename(atom_to_list(?LIBNAME)),
+  Dirs =
+    case code:which(?MODULE) of
+      Filename when is_list(Filename) ->
+        AppDir = filename:dirname(filename:dirname(Filename)),
+        [filename:join(AppDir, "priv"), filename:join(AppDir, "native")];
+      _ ->
+        ["../priv"]
+    end,
+  Candidates = [filename:join(Dir, Base) || Dir <- Dirs],
+  SoName =
+    case [C || C <- Candidates, filelib:is_regular(C ++ ".so")] of
+      [Found | _] -> Found;
+      []          -> hd(Candidates)
+    end,
   case erlang:load_nif(SoName, []) of
     ok ->
       ok;
