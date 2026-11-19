@@ -379,6 +379,25 @@ Repo = git:clone(
 ).
 ```
 
+#### Extra HTTP Headers (Bearer Token)
+
+For a server that authenticates with a token in a header rather than with
+credentials, pass the headers with `headers`, on `clone/3`, `fetch/3`,
+`pull/3` and `push/4`. Each is a binary, `<<"Name: value">>`; they go on
+every HTTP request of the operation. libgit2 refuses a malformed header, and
+one it sets itself (`Host`, `User-Agent`, `Content-Type`...).
+
+```erlang
+Opts = #{headers => [<<"Authorization: Bearer ", Token/binary>>]},
+
+Repo = git:clone(<<"https://git.example.com/repo">>, <<"/tmp/repo">>, Opts).
+git:fetch(Repo, <<"origin">>, Opts).
+git:push(Repo, <<"origin">>, [<<"refs/heads/main">>], Opts).
+```
+
+`headers` and `credentials` can be given together: libgit2 only asks for
+credentials when the server answers 401.
+
 #### Proplist Format
 
 Credentials can also be specified as a proplist instead of a map:
@@ -392,6 +411,20 @@ Creds = [
 ],
 
 Repo = git:clone(Url, Path, #{credentials => Creds}).
+```
+
+#### Refused Pushes
+
+A push the server refuses, wholly or in part, is not `ok`, even though
+libgit2 completed it: each refused ref comes back with the server's reason,
+with the lines the server sent the client (what `git push` shows as
+`remote:`, a hook's explanation for instance). The refs the server accepted
+are updated on the server.
+
+```erlang
+{error, {rejected, [{<<"refs/heads/main">>, <<"pre-receive hook declined">>}],
+                   [<<"main is read-only">>]}} =
+  git:push(Repo, <<"origin">>, [<<"refs/heads/main">>], Opts).
 ```
 
 #### Default Authentication

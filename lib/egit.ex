@@ -33,7 +33,15 @@ defmodule Egit do
 
   Credentials go in `opts` as egit takes them (`CREDENTIALS.md`), e.g.
   `%{credentials: %{type: :token, token: token}}`; keep the token in the
-  app's secure storage, not in code or config.
+  app's secure storage, not in code or config. Extra HTTP headers go in
+  `opts` too, for a server that authenticates with a bearer token:
+  `%{headers: ["Authorization: Bearer " <> token]}`.
+
+  A push the server refuses, wholly or in part, is
+  `{:error, {:rejected, refs, messages}}`: each refused ref with the
+  server's reason (`{"refs/heads/main", "pre-receive hook declined"}`), and
+  the lines it sent the client (what `git push` shows as `remote:`, e.g. a
+  hook's explanation).
 
   ## Where repositories live
 
@@ -57,6 +65,7 @@ defmodule Egit do
           | :not_ready
           | {:network, String.t()}
           | {:certificate, String.t()}
+          | {:rejected, [{ref :: String.t(), reason :: String.t()}], messages :: [String.t()]}
           | {:git, term()}
 
   @call_timeout 15_000

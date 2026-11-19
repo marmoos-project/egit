@@ -63,6 +63,10 @@ git:reflog(Repo, "main")
 -on_load(on_load/0).
 
 -type repository() :: reference().
+%% A push the server refused: each refused ref with its reason, and the
+%% server's remote: lines.
+-type push_rejection()  :: {rejected, [{Ref :: binary(), Reason :: binary()}],
+                                      Messages :: [binary()]}.
 -type commit_opt() ::
   encoding    |
   message     |
@@ -177,7 +181,7 @@ Status function options
 
 -export_type([repository/0, commit_opts/0, cat_file_opt/0, checkout_opts/0, checkout_stats/0]).
 -export_type([rev_parse_opts/0, rev_list_opts/0, tag_opts/0, status_opts/0]).
--export_type([list_index_opts/0, list_index_entry/0]).
+-export_type([list_index_opts/0, list_index_entry/0, push_rejection/0]).
 
 -define(LIBNAME, ?MODULE).
 -define(NOT_LOADED_ERROR,
@@ -244,6 +248,10 @@ Clone a remote repository to the local path with options.
 
 Options map can include:
 - `credentials` - Credentials for authentication (see credentials types below)
+- `headers` - Extra HTTP headers, a list of binaries `<<"Name: value">>`,
+  e.g. `[<<"Authorization: Bearer ", Token/binary>>]`. libgit2 refuses a
+  malformed header, and one it sets itself (`Host`, `User-Agent`,
+  `Content-Type`...). Badarg if not a list of non-empty binaries.
 
 ### Credentials Format
 
@@ -297,6 +305,7 @@ Fetch from given remote with options.
 
 Options map can include:
 - `credentials` - Credentials for authentication (see `clone/3` for format)
+- `headers` - Extra HTTP headers (see `clone/3`)
 """.
 -spec fetch(repository(), binary()|string(), Options :: map()) -> ok | {error, binary()}.
 fetch(Repo, Remote, Options) -> fetch_nif(Repo, fetch, to_bin(Remote), Options).
@@ -319,16 +328,17 @@ Pull from given remote with options.
 
 Options map can include:
 - `credentials` - Credentials for authentication (see `clone/3` for format)
+- `headers` - Extra HTTP headers (see `clone/3`)
 """.
 -spec pull(repository(), binary()|string(), Options :: map()) -> ok | {error, binary()}.
 pull(Repo, Remote, Options) -> fetch_nif(Repo, pull, to_bin(Remote), Options).
 
 -doc "Push changes to remote (origin)".
--spec push(repository()) -> ok | {error, binary()}.
+-spec push(repository()) -> ok | {error, binary() | push_rejection()}.
 push(Repo)          -> push_nif(Repo, <<"origin">>, []).
 
 -doc "Push to given remote".
--spec push(repository(), binary()|string()) -> ok | {error, binary()}.
+-spec push(repository(), binary()|string()) -> ok | {error, binary() | push_rejection()}.
 push(Repo, Remote)  -> push_nif(Repo, to_bin(Remote), []).
 
 -doc """
@@ -339,18 +349,26 @@ Refs is a list of reference specifications, e.g.:
 - `[<<"main">>]` - shorthand for `refs/heads/main:refs/heads/main`
 """.
 -spec push(repository(), binary()|string(), [binary()|string()]) ->
-        ok | {error, binary()}.
+        ok | {error, binary() | push_rejection()}.
 push(Repo, Remote, Refs) when is_list(Refs) ->
   push_nif(Repo, to_bin(Remote), [to_bin(M) || M <- Refs]).
 
 -doc """
 Push refs to given remote with options.
 
+A push the server refuses, wholly or in part, returns
+`{error, {rejected, Refs, Messages}}`: `Refs` the refused refs with the
+server's reason, `[{<<"refs/heads/main">>, <<"pre-receive hook declined">>}]`,
+and `Messages` the lines the server sent the client (what `git push` shows
+as `remote:`, a hook's explanation for instance). libgit2 itself only fails
+when the push could not be made.
+
 Options map can include:
 - `credentials` - Credentials for authentication (see `clone/3` for format)
+- `headers` - Extra HTTP headers (see `clone/3`)
 """.
 -spec push(repository(), binary()|string(), [binary()|string()], Options :: map()) ->
-        ok | {error, binary()}.
+        ok | {error, binary() | push_rejection()}.
 push(Repo, Remote, Refs, Options) when is_list(Refs) ->
   push_nif(Repo, to_bin(Remote), [to_bin(M) || M <- Refs], Options).
 

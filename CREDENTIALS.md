@@ -10,6 +10,7 @@ This guide covers how to use egit to access private Git repositories using vario
 - [Username/Password Authentication](#usernamepassword-authentication)
 - [Personal Access Tokens](#personal-access-tokens)
 - [SSH Agent](#ssh-agent)
+- [Extra HTTP Headers](#extra-http-headers)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
@@ -229,6 +230,25 @@ Repo = git:clone(
 
 **Note:** On macOS, SSH keys are automatically managed by the system and added to ssh-agent.
 
+## Extra HTTP Headers
+
+A server that authenticates with a bearer token in `Authorization` (a
+short-lived token handed out by an API, say) does not need credentials at
+all: pass the header with the `headers` option, a list of binaries
+`<<"Name: value">>`, on `clone/3`, `fetch/3`, `pull/3` and `push/4`.
+
+```erlang
+Opts = #{headers => [<<"Authorization: Bearer ", Token/binary>>]},
+Repo = git:clone(Url, Path, Opts),
+ok = git:fetch(Repo, <<"origin">>, Opts).
+```
+
+The headers go on every HTTP request of the operation. libgit2 refuses a
+malformed header, and one it sets itself (`Host`, `User-Agent`,
+`Content-Type`...); egit raises `badarg` if `headers` is not a list of
+non-empty binaries. With `credentials` too, libgit2 only asks for them if
+the server answers 401.
+
 ## API Reference
 
 ### Credentials Data Structure
@@ -320,10 +340,13 @@ Push to a remote with credentials:
 
 ```erlang
 -spec push(repository(), binary()|string(), [binary()|string()], Options :: map()) ->
-  ok | {error, term()}.
+  ok | {error, binary() | {rejected, [{Ref :: binary(), Reason :: binary()}], [binary()]}}.
 
 git:push(Repo, <<"origin">>, [<<"refs/heads/main">>], #{credentials => Creds}).
 ```
+
+A push the server refuses for some refs is
+`{error, {rejected, Refs, Messages}}`: see the README, "Refused Pushes".
 
 ## Best Practices
 

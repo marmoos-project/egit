@@ -145,10 +145,14 @@ defmodule Egit.Repo do
     state
   end
 
-  # egit's fetch / pull / push return `ok | {error, Msg}` rather than raising;
+  # egit's fetch / pull / push return `ok | {error, Msg}` rather than raising,
+  # and a push the server refused `{error, {rejected, Refs, Messages}}`;
   # clone returns the handle.
   defp normalize({:ok, {:error, message}}, _op) when is_binary(message),
     do: {:error, Egit.classify(message)}
+
+  defp normalize({:ok, {:error, {:rejected, _refs, _messages} = rejected}}, :push),
+    do: {:error, rejected}
 
   defp normalize({:ok, :ok} = ok, _op), do: ok
   defp normalize({:ok, _handle} = ok, :clone), do: ok

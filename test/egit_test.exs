@@ -153,6 +153,130 @@ defmodule EgitTest do
     end
   end
 
+  describe "over HTTP (git http-backend)" do
+    @describetag :nif
+
+    # A bare repository with a commit on main, served over HTTP, whose
+    # update hook refuses any change to main.
+    setup %{tmp_dir: dir} do
+      root = Path.join(dir, "srv")
+      origin = Path.join(root, "origin.git")
+      seed = Path.join(dir, "seed")
+
+      git!(["init", "--quiet", "--bare", "--initial-branch=main", origin])
+      git!(["-C", origin, "config", "http.receivepack", "true"])
+      git!(["init", "--quiet", "--initial-branch=main", seed])
+      File.write!(Path.join(seed, "a.txt"), "a\n")
+      git!(["-C", seed, "add", "a.txt"])
+      git!(["-C", seed, "commit", "--quiet", "-m", "a"])
+      git!(["-C", seed, "push", "--quiet", origin, "main"])
+
+      hook = Path.join([origin, "hooks", "update"])
+
+      File.write!(hook, """
+      #!/bin/sh
+      if [ "$1" = refs/heads/main ]; then
+        echo "main is read-only" >&2
+        exit 1
+      fi
+      """)
+
+      File.chmod!(hook, 0o755)
+
+      port = Egit.Test.GitHttpServer.start(root)
+      %{url: "http://127.0.0.1:#{port}/origin.git", origin: origin}
+    end
+
+    @headers ["Authorization: Bearer t0ken", "X-Marmoos-Device: test"]
+
+    defp git!(args) do
+      env = [
+        {"GIT_CONFIG_GLOBAL", "/dev/null"},
+        {"GIT_AUTHOR_NAME", "egit test"},
+        {"GIT_AUTHOR_EMAIL", "egit@example.invalid"},
+        {"GIT_COMMITTER_NAME", "egit test"},
+        {"GIT_COMMITTER_EMAIL", "egit@example.invalid"}
+      ]
+
+      {out, 0} = System.cmd("git", args, env: env, stderr_to_stdout: true)
+      out
+    end
+
+    # The headers of every request received so far.
+    defp requests(acc \\ []) do
+      receive do
+        {:git_http, _method, _path, headers} -> requests([headers | acc])
+      after
+        0 -> Enum.reverse(acc)
+      end
+    end
+
+    defp clone!(dir, url, opts) do
+      {:ok, repo} = Egit.clone(url, Path.join(dir, "clone"), opts)
+      assert_receive {:egit, ^repo, {:clone, :ok}}, 10_000
+      configure(repo)
+      repo
+    end
+
+    test "clone, fetch and push send the headers", %{tmp_dir: dir, url: url} do
+      opts = %{headers: @headers}
+      repo = clone!(dir, url, opts)
+      assert [_ | _] = clone_requests = requests()
+
+      :ok = Egit.fetch(repo, "origin", opts)
+      assert_receive {:egit, ^repo, {:fetch, :ok}}, 10_000
+      assert [_ | _] = fetch_requests = requests()
+
+      commit_file(repo, "b.txt", "b\n")
+      :ok = Egit.push(repo, "origin", ["refs/heads/main:refs/heads/topic"], opts)
+      assert_receive {:egit, ^repo, {:push, :ok}}, 10_000
+      assert [_ | _] = push_requests = requests()
+
+      for headers <- clone_requests ++ fetch_requests ++ push_requests do
+        assert headers["authorization"] == "Bearer t0ken"
+        assert headers["x-marmoos-device"] == "test"
+      end
+    end
+
+    test "without headers, none is sent", %{tmp_dir: dir, url: url} do
+      clone!(dir, url, %{})
+      assert Enum.all?(requests(), &(not Map.has_key?(&1, "authorization")))
+    end
+
+    test "a push the server refuses per ref: each ref, its reason, the remote lines",
+         %{tmp_dir: dir, url: url, origin: origin} do
+      repo = clone!(dir, url, %{})
+      sha = commit_file(repo, "b.txt", "b\n")
+
+      :ok =
+        Egit.push(repo, "origin", [
+          "refs/heads/main:refs/heads/main",
+          "refs/heads/main:refs/heads/topic"
+        ])
+
+      assert_receive {:egit, ^repo, {:push, {:error, {:rejected, refs, messages}}}}, 10_000
+      assert refs == [{"refs/heads/main", "hook declined"}]
+      assert "main is read-only" in messages
+
+      # The other ref went through: the refusal is per ref.
+      assert git!(["-C", origin, "rev-parse", "refs/heads/topic"]) == sha <> "\n"
+    end
+
+    test "headers must be a list of non-empty binaries", %{tmp_dir: dir, url: url} do
+      for headers <- ["Authorization: Bearer t", [~c"X: y"], [""], [:x]] do
+        assert_raise ArgumentError, fn ->
+          :git.clone(url, Path.join(dir, "bad"), %{headers: headers})
+        end
+      end
+    end
+
+    test "libgit2 refuses a header it sets itself", %{tmp_dir: dir, url: url} do
+      {:ok, repo} = Egit.clone(url, Path.join(dir, "clone"), %{headers: ["Host: elsewhere"]})
+      assert_receive {:egit, ^repo, {:clone, {:error, {:git, message}}}}, 10_000
+      assert message =~ "Host"
+    end
+  end
+
   describe "classify/1" do
     test "unreachable hosts are network errors" do
       assert {:network, _} =

@@ -1,3 +1,5 @@
+Code.require_file("support/git_http_server.ex", __DIR__)
+
 # The Egit tests need the host NIF, which `mix test` builds against the system
 # libgit2 (see mix.exs). Without it they are skipped.
 nif? =

@@ -47,6 +47,7 @@ namespace std { using namespace fmt; }
 #include "git_rebase.hpp"
 #include "git_stash.hpp"
 #include "git_credentials.hpp"
+#include "git_network.hpp"
 
 static ERL_NIF_TERM to_monitored_resource(ErlNifEnv* env, git_repository* p)
 {
@@ -185,11 +186,14 @@ static ERL_NIF_TERM clone_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
   git_repository* p{};
   git_clone_options clone_opts = GIT_CLONE_OPTIONS_INIT;
 
-  // Parse credentials from options if provided
-  ERL_NIF_TERM credentials = 0;
+  // Parse credentials and headers from options if provided
+  ERL_NIF_TERM  credentials = 0;
+  CustomHeaders headers;
   if (argc == 3) {
     credentials = extract_credentials_from_options(env, argv[2]);
     if (credentials && !parse_credentials_param(env, credentials)) [[unlikely]]
+      return enif_make_badarg(env);
+    if (!parse_headers(env, argv[2], headers)) [[unlikely]]
       return enif_make_badarg(env);
   }
 
@@ -199,6 +203,7 @@ static ERL_NIF_TERM clone_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
   // for public https:// URLs too: local git config can rewrite them to an
   // SSH URL via `url.insteadOf`, which then requires *some* callback.
   set_clone_credentials_callback(env, &clone_opts, credentials);
+  clone_opts.fetch_opts.custom_headers = headers.array();
 
   if (git_clone(&p, surl.c_str(), spath.c_str(), &clone_opts) < 0) [[unlikely]]
     return raise_git_exception(env, "Failed to clone git repo " + surl);
@@ -317,6 +322,7 @@ static ERL_NIF_TERM fetch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
 
   std::string remote_name("origin");
   ERL_NIF_TERM credentials = 0;
+  ERL_NIF_TERM options     = 0;
 
   // Parse optional remote name and/or options, in the shapes the Erlang
   // wrappers may pass:
@@ -328,6 +334,7 @@ static ERL_NIF_TERM fetch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
     if (enif_is_map(env, argv[2])) {
       if (argc > 3) [[unlikely]]
         return enif_make_badarg(env);
+      options     = argv[2];
       credentials = extract_credentials_from_options(env, argv[2]);
     } else {
       ErlNifBinary bin;
@@ -338,12 +345,17 @@ static ERL_NIF_TERM fetch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
       if (argc > 3) {
         if (!enif_is_map(env, argv[3])) [[unlikely]]
           return enif_make_badarg(env);
+        options     = argv[3];
         credentials = extract_credentials_from_options(env, argv[3]);
       }
     }
   }
 
   if (credentials && !parse_credentials_param(env, credentials)) [[unlikely]]
+    return enif_make_badarg(env);
+
+  CustomHeaders headers;
+  if (!parse_headers(env, options, headers)) [[unlikely]]
     return enif_make_badarg(env);
 
   SmartPtr<git_remote> remote(git_remote_free);
@@ -356,6 +368,7 @@ static ERL_NIF_TERM fetch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
   // refusing outright when no explicit credentials are supplied.
   git_fetch_options fetch_opts = GIT_FETCH_OPTIONS_INIT;
   set_fetch_credentials_callback(env, &fetch_opts, credentials);
+  fetch_opts.custom_headers = headers.array();
 
   if (git_remote_fetch(remote,
                        NULL,              // refspecs, NULL to use the configured ones
@@ -463,10 +476,13 @@ static ERL_NIF_TERM push_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     ref_specs.push_back(str);
   }
 
-  // Parse credentials from options if provided
-  ERL_NIF_TERM credentials = 0;
+  // Parse credentials and headers from options if provided
+  ERL_NIF_TERM  credentials = 0;
+  CustomHeaders headers;
   if (argc == 4) {
     credentials = extract_credentials_from_options(env, argv[3]);
+    if (!parse_headers(env, argv[3], headers)) [[unlikely]]
+      return enif_make_badarg(env);
   }
 
   if (credentials && !parse_credentials_param(env, credentials)) [[unlikely]]
@@ -493,9 +509,17 @@ static ERL_NIF_TERM push_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
   // push falls back to ssh-agent/default credentials instead of refusing
   // outright when no explicit credentials are supplied.
   set_push_credentials_callback(env, &push_opts, credentials);
+  push_opts.custom_headers = headers.array();
 
-  return git_remote_push(remote, &refspecs, &push_opts) == GIT_OK
-       ? ATOM_OK : make_git_error(env, "Error pushing to " + sremote);
+  // The refs the server refuses, and its remote: lines. The credential
+  // callback keeps its state in thread-locals: the payload is free.
+  PushReport report;
+  report.install(push_opts.callbacks);
+
+  if (git_remote_push(remote, &refspecs, &push_opts) != GIT_OK) [[unlikely]]
+    return make_git_error(env, "Error pushing to " + sremote);
+
+  return report.rejected.empty() ? ATOM_OK : report.rejection(env);
 }
 
 static ERL_NIF_TERM rev_parse_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])

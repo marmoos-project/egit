@@ -15,6 +15,8 @@ defmodule Egit.MixProject do
       elixir: "~> 1.18",
       language: :erlang,
       compilers: Mix.compilers() ++ [:egit_nif],
+      # Test helpers, loaded by test/test_helper.exs: not tests.
+      test_ignore_filters: [&String.starts_with?(&1, "test/support/")],
       deps: deps()
     ]
   end
